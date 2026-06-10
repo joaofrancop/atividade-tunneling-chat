@@ -1,7 +1,12 @@
 """
-Aplicação A — Servidor do chat seguro.
+Aplicação A — Servidor do chat seguro (requisito a do enunciado).
 
-Execute primeiro esta aplicação. Ela aguarda a conexão da Aplicação B.
+Papel:
+  - Escuta conexões TCP na porta configurada
+  - Aguarda a Aplicação B conectar
+  - Participa da negociação RSA (tunneling) e exibe o chat na tela
+
+Execute PRIMEIRO esta aplicação, depois a aplicacao_b.py.
 """
 
 import argparse

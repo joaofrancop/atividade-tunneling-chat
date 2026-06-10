@@ -1,4 +1,4 @@
-"""Interface gráfica moderna para o chat seguro."""
+"""Interface gráfica do chat seguro (duas aplicações, formato chat online)."""
 
 import threading
 from datetime import datetime
@@ -9,6 +9,7 @@ import customtkinter as ctk
 
 from protocolo import SessaoChat
 
+# Cores distintas para diferenciar Aplicação A (azul) e B (roxo) na apresentação
 TEMAS = {
     "a": {
         "accent": "#0ea5e9",
@@ -30,6 +31,8 @@ TEMAS = {
 
 
 class JanelaChat(ctk.CTk):
+    """Janela principal do chat — exibe mensagens, status do túnel e autenticação."""
+
     def __init__(self, titulo: str, nome_usuario: str, modo: str, host: str, porta: int, tema: str = "a"):
         super().__init__()
         ctk.set_appearance_mode("dark")
@@ -37,7 +40,7 @@ class JanelaChat(ctk.CTk):
 
         self.tema = TEMAS.get(tema, TEMAS["a"])
         self.title(titulo)
-        self.geometry("720x640")
+        self.geometry("720x680")
         self.minsize(520, 480)
         self.configure(fg_color="#0f172a")
 
@@ -56,19 +59,19 @@ class JanelaChat(ctk.CTk):
                if modo == "servidor"
                else f"Conectando ao servidor em {host}:{porta}..."),
         )
+        # Conexão roda em thread separada para não travar a interface
         threading.Thread(target=self._iniciar_conexao, daemon=True).start()
 
     def _montar_interface(self) -> None:
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
-
         self._montar_cabecalho()
         self._montar_area_chat()
         self._montar_entrada()
         self.protocol("WM_DELETE_WINDOW", self._fechar)
 
     def _montar_cabecalho(self) -> None:
-        header = ctk.CTkFrame(self, fg_color=self.tema["header"], corner_radius=0, height=88)
+        header = ctk.CTkFrame(self, fg_color=self.tema["header"], corner_radius=0, height=96)
         header.grid(row=0, column=0, sticky="ew")
         header.grid_propagate(False)
         header.grid_columnconfigure(1, weight=1)
@@ -85,9 +88,10 @@ class JanelaChat(ctk.CTk):
             anchor="w",
         ).grid(row=0, column=1, sticky="sw", pady=(18, 0))
 
+        # Destaca os 4 conceitos da disciplina no cabeçalho
         ctk.CTkLabel(
             header,
-            text=f"{papel}  ·  RSA 2048 + AES-GCM  ·  {self.host}:{self.porta}",
+            text=f"{papel}  ·  RSA  ·  SHA-256  ·  Tunneling  ·  {self.host}:{self.porta}",
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color="#cbd5e1",
             anchor="w",
@@ -155,6 +159,7 @@ class JanelaChat(ctk.CTk):
         )
         self.botao_enviar.grid(row=0, column=1)
 
+        # Barra inferior: mostra o passo atual do tunneling / autenticação
         self.label_status = ctk.CTkLabel(
             self,
             text="Inicializando...",
@@ -168,7 +173,7 @@ class JanelaChat(ctk.CTk):
         try:
             self.sessao = SessaoChat(
                 nome_local=self.nome_usuario,
-                on_mensagem=lambda remetente, texto: self.after(0, self._exibir_mensagem, remetente, texto),
+                on_mensagem=lambda r, t, h, a: self.after(0, self._exibir_mensagem, r, t, h, a),
                 on_status=lambda msg: self.after(0, self._atualizar_status, msg),
             )
             if self.modo == "servidor":
@@ -177,7 +182,13 @@ class JanelaChat(ctk.CTk):
                 self.sessao.conectar(self.host, self.porta)
 
             self.after(0, self._habilitar_chat)
-            self.after(0, self._exibir_mensagem, "Sistema", "Canal seguro estabelecido. Suas mensagens estão criptografadas.")
+            self.after(
+                0,
+                self._exibir_mensagem,
+                "Sistema",
+                "Túnel seguro estabelecido.\n"
+                "Mensagens: criptografadas (AES) + hash SHA-256 + assinatura RSA.",
+            )
         except OSError as exc:
             self.after(0, lambda: messagebox.showerror("Erro de conexão", str(exc)))
             self.after(0, self._atualizar_status, f"Erro: {exc}", conectado=False)
@@ -199,14 +210,20 @@ class JanelaChat(ctk.CTk):
 
         if "erro" in mensagem.lower() or "perdida" in mensagem.lower():
             self.indicador_status.configure(text="● Offline", text_color="#f87171")
-        elif conectado or "ativo" in mensagem.lower():
+        elif conectado or "ativo" in mensagem.lower() or "pronto" in mensagem.lower():
             self.indicador_status.configure(text="● Seguro", text_color="#4ade80")
         elif "aguardando" in mensagem.lower():
             self.indicador_status.configure(text="● Aguardando", text_color="#fbbf24")
-        elif "negociando" in mensagem.lower() or "conectando" in mensagem.lower():
-            self.indicador_status.configure(text="● Conectando", text_color="#38bdf8")
+        elif "negociando" in mensagem.lower() or "conectando" in mensagem.lower() or "tunneling" in mensagem.lower():
+            self.indicador_status.configure(text="● Tunneling", text_color="#38bdf8")
 
-    def _exibir_mensagem(self, remetente: str, texto: str) -> None:
+    def _exibir_mensagem(
+        self,
+        remetente: str,
+        texto: str,
+        hash_sha256: Optional[str] = None,
+        autenticada: Optional[bool] = None,
+    ) -> None:
         is_system = remetente == "Sistema"
         is_own = remetente == self.nome_usuario
 
@@ -253,7 +270,28 @@ class JanelaChat(ctk.CTk):
                 wraplength=380,
                 justify="left" if not is_own else "right",
                 anchor="w",
-            ).pack(padx=16, pady=10)
+            ).pack(padx=16, pady=(10, 4))
+
+            # Exibe hash SHA-256 e status da assinatura RSA (autenticador de documentos)
+            if hash_sha256:
+                if autenticada is True:
+                    selo = "✓ Autenticada (SHA-256 + RSA)"
+                    cor_selo = "#4ade80"
+                elif autenticada is False:
+                    selo = "✗ Assinatura inválida"
+                    cor_selo = "#f87171"
+                else:
+                    selo = "SHA-256 calculado"
+                    cor_selo = "#94a3b8"
+
+                hash_curto = f"{hash_sha256[:12]}...{hash_sha256[-8:]}"
+                ctk.CTkLabel(
+                    bubble,
+                    text=f"{selo}  ·  hash: {hash_curto}",
+                    font=ctk.CTkFont(family="Consolas", size=9),
+                    text_color=cor_selo,
+                    anchor="w",
+                ).pack(padx=16, pady=(0, 10))
 
         self.after(50, self._rolar_para_fim)
 
@@ -268,8 +306,9 @@ class JanelaChat(ctk.CTk):
         if not texto or not self.sessao or not self._conectado:
             return
         try:
-            self.sessao.enviar_mensagem(texto)
-            self._exibir_mensagem(self.nome_usuario, texto)
+            hash_sha256, _ = self.sessao.enviar_mensagem(texto)
+            # Mensagem própria: hash exibido; autenticada=None (não precisa verificar a si mesmo)
+            self._exibir_mensagem(self.nome_usuario, texto, hash_sha256, None)
             self.campo_mensagem.delete(0, "end")
         except Exception as exc:
             messagebox.showerror("Erro ao enviar", str(exc))

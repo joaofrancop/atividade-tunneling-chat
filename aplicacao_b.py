@@ -1,7 +1,12 @@
 """
-Aplicação B — Cliente do chat seguro.
+Aplicação B — Cliente do chat seguro (requisito a do enunciado).
 
-Execute após a Aplicação A estar aguardando conexão.
+Papel:
+  - Conecta à Aplicação A pelo endereço/porta informados
+  - Inicia o tunneling RSA e troca mensagens criptografadas
+  - Exibe o chat na tela (requisito b do enunciado)
+
+Execute DEPOIS da aplicacao_a.py estar aguardando conexão.
 """
 
 import argparse
